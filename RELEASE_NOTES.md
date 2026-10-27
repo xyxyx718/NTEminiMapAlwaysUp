@@ -12,11 +12,11 @@
 
 ## 选择下载包
 
-- `framework-dependent`：ZIP 约 7.2 MiB，需要 .NET 9 Desktop Runtime x64，启动器可在确认后补装。
-- `self-contained`：ZIP 约 49.5 MiB，自带 .NET，不需要预装运行库。
+- **NTEminiMapAlwaysUp.zip**：约 7.2 MiB，需要 .NET 9 Desktop Runtime x64，启动器可在确认后补装。
+- **NTEminiMapAlwaysUp-WithDotNet.zip**：约 49.5 MiB，自带 .NET，不需要预装运行库。
 - 两者的驾驶文字识别都需要 Windows 简体中文 OCR；启动器可在确认后安装。
 
-完整解压后优先运行“启动小地图.cmd”。校验文件为 `SHA256SUMS-v0.1.0.txt`。
+完整解压后优先运行“启动小地图.cmd”。校验文件为 `SHA256SUMS.txt`。
 
 两个包的实际 EXE 均已通过 33 项行为检查，以及驾驶文字识别正例 / 拍照界面负例检查。压缩包不包含本机设置、日志、截图、调试符号或测试结果。
 

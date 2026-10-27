@@ -12,8 +12,8 @@
 
 | 发布包 | .NET 要求 | 适用情况 |
 | --- | --- | --- |
-| `framework-dependent` | 需要 .NET 9 Desktop Runtime x64 | 包较小，已经安装 .NET 或允许启动器补装 |
-| `self-contained` | 自带 .NET，无需预装运行库 | 不确定目标机器是否安装了 .NET |
+| [NTEminiMapAlwaysUp.zip](https://github.com/xyxyx718/NTEminiMapAlwaysUp/releases/latest/download/NTEminiMapAlwaysUp.zip) | 需要 .NET 9 Desktop Runtime x64 | 包较小，已经安装 .NET 或允许启动器补装 |
+| [NTEminiMapAlwaysUp-WithDotNet.zip](https://github.com/xyxyx718/NTEminiMapAlwaysUp/releases/latest/download/NTEminiMapAlwaysUp-WithDotNet.zip) | 自带 .NET，无需预装运行库 | 不确定目标机器是否安装了 .NET |
 
 两个包的 **MinimapUp.exe 都在最外层**，主程序与依赖已合并为单文件。图标也已嵌入。`arrow-template.png`、`scripts/` 和其他随包文件应保留。直接运行 EXE 会绕过外部依赖检查；缺少 .NET 时，小包无法靠自身完成检查。
 
@@ -74,7 +74,7 @@ OCR 在后台运行，状态区显示命中词及耗时。它不保证每个检�
 .\scripts\Package-Release.ps1 -Version 0.1.0
 ```
 
-ZIP 和校验文件输出到 `artifacts/releases/`。打包只从本次干净的发布输出取文件，不包含用户设置、日志、调试符号、源码或截图。首次构建自带 .NET 包可能需要从 NuGet 下载运行时包。未启用裁剪，以保持 WinForms / WinRT 兼容性。
+ZIP 和 `SHA256SUMS.txt` 输出到 `artifacts/releases/v<版本号>/`。打包只从本次干净的发布输出取文件，不包含用户设置、日志、调试符号、源码或截图。首次构建自带 .NET 包可能需要从 NuGet 下载运行时包。未启用裁剪，以保持 WinForms / WinRT 兼容性。
 
 ## 测试
 

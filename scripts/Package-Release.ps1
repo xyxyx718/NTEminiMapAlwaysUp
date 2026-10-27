@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $artifacts = Join-Path $projectRoot 'artifacts'
 $work = Join-Path $artifacts ('release-builds\' + $Version + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
-$releases = Join-Path $artifacts 'releases'
+$releases = Join-Path $artifacts ('releases\v' + $Version)
 $env:DOTNET_CLI_HOME = Join-Path $artifacts 'dotnet-cli'
 if (!$env:NUGET_PACKAGES) { $env:NUGET_PACKAGES = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.nuget\packages' }
 New-Item -ItemType Directory -Path $work, $releases -Force | Out-Null
@@ -69,7 +69,8 @@ foreach ($variant in @('framework-dependent', 'self-contained')) {
     }
     # Only staged publish files enter the archive: no user configuration, logs,
     # PDBs, source, screenshots or local diagnostics are copied into the package.
-    $zip = Join-Path $releases ("NTEminiMapAlwaysUp-v$Version-win-x64-$variant.zip")
+    $archiveName = if ($selfContained) { 'NTEminiMapAlwaysUp-WithDotNet.zip' } else { 'NTEminiMapAlwaysUp.zip' }
+    $zip = Join-Path $releases $archiveName
     if (Test-Path -LiteralPath $zip) {
         if (!$Force) { throw "Archive already exists: $zip. Use -Force to replace generated archives for this version." }
         Remove-Item -LiteralPath $zip
@@ -78,5 +79,5 @@ foreach ($variant in @('framework-dependent', 'self-contained')) {
     $results += [pscustomobject]@{ Variant = $variant; Zip = $zip; Bytes = (Get-Item -LiteralPath $zip).Length; UnpackedBytes = (Get-ChildItem -LiteralPath $stage -File -Recurse | Measure-Object Length -Sum).Sum }
 }
 $checksums = foreach ($result in $results) { $hash = Get-FileHash -LiteralPath $result.Zip -Algorithm SHA256; $hash.Hash.ToLowerInvariant() + '  ' + [IO.Path]::GetFileName($result.Zip) }
-$checksums | Set-Content -LiteralPath (Join-Path $releases "SHA256SUMS-v$Version.txt") -Encoding ASCII
+$checksums | Set-Content -LiteralPath (Join-Path $releases 'SHA256SUMS.txt') -Encoding ASCII
 $results | Format-Table Variant, Bytes, UnpackedBytes, Zip -AutoSize
