@@ -297,7 +297,8 @@ sealed class Controller : Form
     readonly Overlay overlay = new();
     readonly Label status = new() { AutoSize = false, Dock = DockStyle.Fill };
     readonly System.Windows.Forms.Timer timer = new();
-    readonly NotifyIcon tray = new() { Icon = SystemIcons.Application, Visible = true, Text = "异环小地图朝上" };
+    readonly Icon appIcon = LoadAppIcon();
+    readonly NotifyIcon tray = new() { Text = "异环小地图朝上" };
     readonly CheckBox cover = new() { Text = "覆盖原小地图（取消则在右侧预览）", AutoSize = true };
     readonly Button pause = new() { Text = "暂停 / 恢复", AutoSize = true };
     readonly NumericUpDown showDelay = new() { Minimum = 0, Maximum = 5000, Increment = 50, Width = 110, Name = "ShowDelayMs" };
@@ -324,6 +325,7 @@ sealed class Controller : Form
     public Controller()
     {
         Text = "异环 · 小地图朝上（原型）";
+        Icon = appIcon; tray.Icon = appIcon; tray.Visible = true;
         Font = new Font("Microsoft YaHei UI", 10); AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(640, 570); StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false;
@@ -390,6 +392,12 @@ sealed class Controller : Form
             timer.Interval = (int)interval.Value; timer.Tick += Tick; timer.Start();
         };
     }
+    static Icon LoadAppIcon()
+    {
+        using var stream = typeof(Controller).Assembly.GetManifestResourceStream("MinimapUp.AppIcon.ico")!;
+        using var source = new Icon(stream, new Size(32, 32));
+        return (Icon)source.Clone();
+    }
     void SaveUiSettings()
     {
         if (updatingControls) return;
@@ -434,7 +442,7 @@ sealed class Controller : Form
     void State(string text, string detail = "")
     {
         if (lastState != text) { lastState = text; Log(text); }
-        status.Text = text + "\n" + detail + "\nCtrl+Alt+F8 暂停　F9 切换覆盖　F10 退出\n（后三者均需 Ctrl+Alt）";
+        status.Text = text + "\n" + detail + "\nCtrl+Alt+F8：暂停 / 恢复\nCtrl+Alt+F9：切换覆盖 / 预览\nCtrl+Alt+F10：退出程序";
         if (DateTime.UtcNow - lastDiagnostic > TimeSpan.FromSeconds(1))
         {
             lastDiagnostic = DateTime.UtcNow;
@@ -516,7 +524,7 @@ sealed class Controller : Form
     {
         if (disposing)
         {
-            timer.Stop(); timer.Dispose(); overlay.Dispose(); tray.Visible = false; tray.Dispose();
+            timer.Stop(); timer.Dispose(); overlay.Dispose(); tray.Visible = false; tray.Dispose(); appIcon.Dispose();
             for (int i = 1; i <= 3; i++) Native.UnregisterHotKey(Handle, i);
         }
         base.Dispose(disposing);
