@@ -4,14 +4,16 @@
 
 - 默认在原地图右侧显示旋转后的预览；勾选“覆盖原小地图”或按 Ctrl+Alt+F9 切换。
 - Ctrl+Alt+F8：暂停 / 恢复。Ctrl+Alt+F10：退出。
-- 控制面板最小化后进入托盘，双击托盘图标恢复；右键可以退出。
-- 只在 HTGame.exe 位于前台且检测到小地图及中心金色箭头时显示。切出、最小化、地图消失或识别失败时隐藏；重新检测到后连续确认三帧再显示。
+- 控制面板可调显示 / 隐藏确认时间，范围 0–5000 毫秒，0 表示立即切换。“恢复默认”将这两个时间恢复为显示 100 ms、隐藏 200 ms，修改立即生效并保存。
+- 必须连续检测到地图达到显示时间才显示；连续未检测到达到隐藏时间才隐藏，中途恢复检测会取消隐藏计时。等待隐藏期间保留最后一帧，适合滤掉短暂漏检；隐藏时间越长，菜单打开后旧地图也会保留越久。
+- 控制面板最小化后进入托盘，双击托盘图标恢复。可勾选“点击关闭按钮时最小化到托盘”（默认勾选）；关闭面板后捕获继续。托盘右键“退出”或 Ctrl+Alt+F10 始终真正退出，系统关机也不会被拦截。
+- 只在 HTGame.exe 位于前台且检测到小地图及中心金色箭头时显示。切出游戏、游戏最小化、暂停和捕获失败立即隐藏，不等待滤波时间。
 
 当前是按提供的 3840×2160 截图校准的原型。随游戏客户区高度缩放，在左上角附近搜索圆形结构，针对中心金色箭头匹配 120 个方向。支持明暗边界和暗背景下的圆环亮边，排除高饱和黄色导航线。新 HUD 布局、HUD 缩放、不同样式的箭头、遮挡以及 HDR 捕获表现仍需实际验证。
 
 捕获使用 Windows GDI 的 CopyFromScreen，仅截取左上角一小块区域，目标刷新间隔 33 ms；不是 GPU 捕获版，也没有测量端到端显示延迟。覆盖窗口使用圆形裁剪、置顶、无激活和鼠标穿透，并通过 WDA_EXCLUDEFROMCAPTURE 排除自身捕获；排除失败时停用。建议无边框窗口模式，独占全屏能否显示覆盖层需现场测试。
 
-`app/settings.json` 首次修改覆盖模式时生成，可在退出后修改：CenterX / CenterY / Radius 是游戏客户区高度归一化到 1080 后的位置；默认 156 / 140 / 108。IntervalMs 为刷新间隔，ArrowThreshold / RingThreshold 为检测门槛。恢复默认可在退出后移走此文件。`app/status.json` 是最近状态，`app/minimap.log` 记录状态切换。
+`app/settings.json` 修改界面选项时生成，保存覆盖模式、ShowDelayMs / HideDelayMs 和 CloseToTray。旧配置缺少这些字段时自动采用默认值。退出后还可修改：CenterX / CenterY / Radius 是游戏客户区高度归一化到 1080 后的位置；默认 156 / 140 / 108。IntervalMs 为刷新间隔，ArrowThreshold / RingThreshold 为检测门槛。`app/status.json` 是最近状态，`app/minimap.log` 记录状态切换。
 
 只捕获屏幕像素并查询窗口，不读取游戏内存。所有生成文件保存在本目录；没有安装自启动或修改游戏文件。
 
@@ -21,6 +23,7 @@
 dotnet publish -c Release -o app -p:NuGetAudit=false
 .\app\MinimapUp.exe --test (Resolve-Path .\reference.png).Path
 .\app\MinimapUp.exe --analyze (Resolve-Path .\failure-angle.png).Path
+.\app\MinimapUp.exe --test-behavior
 ```
 
 `--test` 在程序目录生成 test-results.json，覆盖原截图、23 个旋转方向、纯黑无地图和只有箭头无地图样本。旋转测试是离线变换验证，不能代替实际驾驶验证。`--analyze` 在输入截图旁输出 detection.json；`--capture` 针对当前 HTGame 客户区进行一次桌面捕获，主要用于调试，游戏应保持前台。

@@ -12,3 +12,4 @@ live-*.png
 *.png.json
 arrow.png
 *-tests.json
+behavior-test-results.json
