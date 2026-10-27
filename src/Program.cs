@@ -52,7 +52,7 @@ sealed class Settings
     public int IntervalMs { get; set; } = 33;
     public bool Cover { get; set; } = true;
     public int ShowDelayMs { get; set; } = 100;
-    public int HideDelayMs { get; set; } = 200;
+    public int HideDelayMs { get; set; } = 100;
     public bool CloseToTray { get; set; } = true;
     public bool DrivingOnly { get; set; } = true;
     public bool ShowWhenAppFocused { get; set; } = true;
@@ -355,7 +355,7 @@ sealed class Controller : Form
         timingLayout.Controls.Add(new Label { Text = "检测间隔", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
         timingLayout.Controls.Add(interval, 1, 2);
         timingLayout.Controls.Add(new Label { Text = "毫秒（16–1000）", AutoSize = true, Anchor = AnchorStyles.Left }, 2, 2);
-        var hint = new Label { Text = "默认：显示 100 ms / 隐藏 200 ms；0 表示立即切换。", AutoSize = true, Anchor = AnchorStyles.Left };
+        var hint = new Label { Text = "默认：显示 100 ms / 隐藏 100 ms；0 表示立即切换。", AutoSize = true, Anchor = AnchorStyles.Left };
         timingLayout.Controls.Add(hint, 0, 3); timingLayout.SetColumnSpan(hint, 3);
         timing.Controls.Add(timingLayout); layout.Controls.Add(timing, 0, 2);
         closeToTray.Checked = settings.CloseToTray; layout.Controls.Add(closeToTray, 0, 3);

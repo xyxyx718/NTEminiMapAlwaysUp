@@ -1,6 +1,6 @@
 # Application icon
 
-Generated with the built-in ImageGen tool using the earliest game screenshot (`reference.png`) as the visual reference. The source PNG has transparent surroundings. `scripts/Build-Icon.ps1` packages it into a Windows ICO with 16, 24, 32, 48, 64, 128, and 256 pixel frames; it preserves the generated alpha channel.
+Generated with the built-in ImageGen tool using the earliest game screenshot (`tests/fixtures/reference.png`) as the visual reference. The source PNG has transparent surroundings. `scripts/Build-Icon.ps1` packages it into a Windows ICO with 16, 24, 32, 48, 64, 128, and 256 pixel frames; it preserves the generated alpha channel.
 
 ## Final prompt
 

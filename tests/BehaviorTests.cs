@@ -43,6 +43,7 @@ static class BehaviorTests
         Check("restore_resets_every_setting", JsonSerializer.Serialize(settings) == JsonSerializer.Serialize(new Settings()));
         Check("default_cover_and_tray_enabled", settings.Cover && settings.CloseToTray);
         Check("default_detection_interval_33ms", settings.IntervalMs == 33);
+        Check("default_visibility_delays_100ms", settings.ShowDelayMs == 100 && settings.HideDelayMs == 100);
         Check("driving_only_enabled_by_default", settings.DrivingOnly);
         foreach (string keyword in DrivingDetector.Keywords)
             Check($"driving_keyword_{keyword}", DrivingDetector.MatchKeywords([string.Join(" ", keyword.ToCharArray())]).Contains(keyword));

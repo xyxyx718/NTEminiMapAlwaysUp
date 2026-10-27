@@ -14,7 +14,7 @@
 - Ctrl+Alt+F8：暂停 / 恢复。Ctrl+Alt+F10：退出。
 - 窗口中的快捷键提示分别显示为三行：Ctrl+Alt+F8 暂停 / 恢复、Ctrl+Alt+F9 切换覆盖 / 预览、Ctrl+Alt+F10 退出。应用文件、窗口和托盘使用 `Assets/app-icon.ico`，图标基于最早截图的小地图生成，金色箭头固定向上，右下角是白字深灰描边的 NTE。
 - 窗口状态区保留至少 180 像素高度，窗口高度增加到 680，避免第三行快捷键被裁掉。
-- 控制面板可调检测间隔（16–1000 ms，默认 33 ms）以及显示 / 隐藏确认时间（0–5000 ms，默认 100 / 200 ms，0 表示立即切换）。修改立即生效并保存；实际刷新速度受捕获、识别耗时和系统负载影响。
+- 控制面板可调检测间隔（16–1000 ms，默认 33 ms）以及显示 / 隐藏确认时间（0–5000 ms，默认均为 100 ms，0 表示立即切换）。修改立即生效并保存；实际刷新速度受捕获、识别耗时和系统负载影响。
 - “恢复全部默认设置”重置全部配置，包括检测间隔、显示 / 隐藏时间、覆盖模式、驾驶模式限制、自身焦点显示、关闭到托盘，以及配置文件中的识别位置和门槛；默认覆盖小地图，默认关闭到托盘。
 - 必须连续检测到地图达到显示时间才显示；连续未检测到达到隐藏时间才隐藏，中途恢复检测会取消隐藏计时。等待隐藏期间保留最后一帧，适合滤掉短暂漏检；隐藏时间越长，菜单打开后旧地图也会保留越久。
 - 控制面板最小化后进入托盘，双击托盘图标恢复。可勾选“点击关闭按钮时最小化到托盘”（默认勾选）；关闭面板后捕获继续。托盘右键“退出”或 Ctrl+Alt+F10 始终真正退出，系统关机也不会被拦截。
@@ -33,12 +33,14 @@
 ## 构建和验证
 
 ```powershell
-dotnet publish -c Release -o app -p:NuGetAudit=false
-.\app\MinimapUp.exe --test (Resolve-Path .\reference.png).Path
-.\app\MinimapUp.exe --analyze (Resolve-Path .\failure-angle.png).Path
+.\scripts\Build-App.ps1
+.\app\MinimapUp.exe --test (Resolve-Path .\tests\fixtures\reference.png).Path
+.\app\MinimapUp.exe --analyze (Resolve-Path .\tests\fixtures\failure-angle.png).Path
 .\app\MinimapUp.exe --test-behavior
-.\app\MinimapUp.exe --test-driving (Resolve-Path .\driving-keyboard.png).Path
+.\app\MinimapUp.exe --test-driving (Resolve-Path .\tests\fixtures\driving-keyboard.png).Path
 ```
+
+工作区布局：`src/` 为应用源码，`tests/` 为行为检查及本地截图样本，`Assets/` 为图标和箭头模板，`scripts/` 为启动、依赖检查和构建脚本，`app/` 为当前可运行版本及用户配置，`artifacts/` 为构建中间文件、缓存、候选版本和历史诊断报告。构建路径由 `Directory.Build.props` 统一设置；源码、文档和资源受 Git 管理，本地截图、配置及产物忽略。旧可执行文件仅保留在 artifacts 中，请通过根目录的“启动小地图.cmd”运行当前版本。
 
 `--test` 在程序目录生成 test-results.json，覆盖原截图、23 个旋转方向、纯黑无地图和只有箭头无地图样本。旋转测试是离线变换验证，不能代替实际驾驶验证。`--analyze` 在输入截图旁输出 detection.json；`--capture` 是旧的单次桌面截图诊断命令，游戏应保持前台；`--capture-window <绝对输出前缀>` 使用新的游戏窗口捕获，保存 .map.png / .driving.png 和 .capture.json，可检查输入是否为原始游戏画面。
 

@@ -12,7 +12,7 @@
     <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
-    <Content Include="arrow-template.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\arrow-template.png" Link="arrow-template.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <EmbeddedResource Include="Assets\app-icon.ico" LogicalName="MinimapUp.AppIcon.ico" />
   </ItemGroup>
 </Project>

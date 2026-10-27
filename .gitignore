@@ -3,6 +3,8 @@ obj/
 candidate/
 app/
 .dotnet/
+artifacts/
+tests/fixtures/
 *.log
 status.json
 reference.png
