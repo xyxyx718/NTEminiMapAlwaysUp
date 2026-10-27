@@ -332,7 +332,7 @@ sealed class Controller : Form
         Text = "异环 · 小地图朝上（原型）";
         Icon = appIcon; tray.Icon = appIcon; tray.Visible = true;
         Font = new Font("Microsoft YaHei UI", 10); AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(640, 570); StartPosition = FormStartPosition.CenterScreen;
+        ClientSize = new Size(640, 680); StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false;
         detector = new Detector(settings, Path.Combine(AppContext.BaseDirectory, "arrow-template.png"));
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7, Padding = new Padding(14) };
@@ -363,7 +363,8 @@ sealed class Controller : Form
         var defaults = new Button { Text = "恢复全部默认设置", AutoSize = true, Name = "RestoreDefaults" };
         showWhenAppFocused.Checked = settings.ShowWhenAppFocused; layout.Controls.Add(showWhenAppFocused, 0, 4);
         actions.Controls.Add(defaults); actions.Controls.Add(pause); layout.Controls.Add(actions, 0, 5);
-        status.Padding = new Padding(0, 10, 0, 0); layout.Controls.Add(status, 0, 6); Controls.Add(layout);
+        status.Padding = new Padding(0, 10, 0, 0); status.MinimumSize = new Size(0, 180);
+        layout.Controls.Add(status, 0, 6); Controls.Add(layout);
         showDelay.ValueChanged += (_, _) => SaveUiSettings();
         hideDelay.ValueChanged += (_, _) => SaveUiSettings();
         interval.ValueChanged += (_, _) => SaveUiSettings();
