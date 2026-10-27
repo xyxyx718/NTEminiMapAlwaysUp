@@ -36,10 +36,18 @@ sealed class Settings
     public double ArrowThreshold { get; set; } = .66;
     public double RingThreshold { get; set; } = .46;
     public int IntervalMs { get; set; } = 33;
-    public bool Cover { get; set; } = false;
+    public bool Cover { get; set; } = true;
     public int ShowDelayMs { get; set; } = 100;
     public int HideDelayMs { get; set; } = 200;
     public bool CloseToTray { get; set; } = true;
+    public void RestoreDefaults()
+    {
+        var d = new Settings();
+        ProcessName = d.ProcessName; CenterX = d.CenterX; CenterY = d.CenterY; Radius = d.Radius;
+        ArrowThreshold = d.ArrowThreshold; RingThreshold = d.RingThreshold;
+        IntervalMs = d.IntervalMs; Cover = d.Cover; ShowDelayMs = d.ShowDelayMs;
+        HideDelayMs = d.HideDelayMs; CloseToTray = d.CloseToTray;
+    }
     public static Settings Load() => File.Exists("settings.json") ? JsonSerializer.Deserialize<Settings>(File.ReadAllText("settings.json"))! : new();
     public void Save() => File.WriteAllText("settings.json", JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
 }
@@ -69,6 +77,7 @@ static class Native
     [DllImport("user32.dll")] internal static extern bool GetClientRect(nint hwnd, out Rect rect);
     [DllImport("user32.dll")] internal static extern bool ClientToScreen(nint hwnd, ref Point point);
     [DllImport("user32.dll")] internal static extern nint GetForegroundWindow();
+    [DllImport("user32.dll")] internal static extern uint GetWindowThreadProcessId(nint hwnd, out uint processId);
     [DllImport("user32.dll")] internal static extern bool IsIconic(nint hwnd);
     [DllImport("user32.dll")] internal static extern bool IsWindow(nint hwnd);
     [DllImport("user32.dll", SetLastError = true)] internal static extern bool SetWindowDisplayAffinity(nint hwnd, uint affinity);
@@ -273,6 +282,7 @@ sealed class Controller : Form
     readonly Button pause = new() { Text = "暂停 / 恢复", AutoSize = true };
     readonly NumericUpDown showDelay = new() { Minimum = 0, Maximum = 5000, Increment = 50, Width = 110, Name = "ShowDelayMs" };
     readonly NumericUpDown hideDelay = new() { Minimum = 0, Maximum = 5000, Increment = 50, Width = 110, Name = "HideDelayMs" };
+    readonly NumericUpDown interval = new() { Minimum = 16, Maximum = 1000, Increment = 1, Width = 110, Name = "IntervalMs" };
     readonly CheckBox closeToTray = new() { Text = "点击关闭按钮时最小化到托盘", AutoSize = true, Name = "CloseToTray" };
     readonly VisibilityFilter visibility = new();
     readonly Detector detector;
@@ -280,6 +290,7 @@ sealed class Controller : Form
     nint game;
     DateTime lastLookup;
     bool exitRequested;
+    bool updatingControls;
     Rectangle lastClient;
     double smoothAngle;
     bool tracking;
@@ -290,7 +301,7 @@ sealed class Controller : Form
     {
         Text = "异环 · 小地图朝上（原型）";
         Font = new Font("Microsoft YaHei UI", 10); AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(640, 460); StartPosition = FormStartPosition.CenterScreen;
+        ClientSize = new Size(640, 500); StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false;
         detector = new Detector(settings, Path.Combine(AppContext.BaseDirectory, "arrow-template.png"));
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(14) };
@@ -298,29 +309,34 @@ sealed class Controller : Form
         for (int i = 0; i < 4; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         cover.Checked = settings.Cover; layout.Controls.Add(cover, 0, 0);
-        var timing = new GroupBox { Text = "显示 / 隐藏滤波", AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(10, 25, 10, 10) };
+        var timing = new GroupBox { Text = "检测与显示", AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(10, 25, 10, 10) };
         var timingLayout = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 4 };
         showDelay.Value = Math.Clamp(settings.ShowDelayMs, 0, 5000);
         hideDelay.Value = Math.Clamp(settings.HideDelayMs, 0, 5000);
+        interval.Value = Math.Clamp(settings.IntervalMs, 16, 1000);
         timingLayout.Controls.Add(new Label { Text = "连续检测到后显示", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
         timingLayout.Controls.Add(showDelay, 1, 0);
         timingLayout.Controls.Add(new Label { Text = "毫秒", AutoSize = true, Anchor = AnchorStyles.Left }, 2, 0);
         timingLayout.Controls.Add(new Label { Text = "连续未检测到后隐藏", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
         timingLayout.Controls.Add(hideDelay, 1, 1);
         timingLayout.Controls.Add(new Label { Text = "毫秒", AutoSize = true, Anchor = AnchorStyles.Left }, 2, 1);
-        var defaults = new Button { Text = "恢复默认", AutoSize = true, Name = "RestoreTimingDefaults" };
-        timingLayout.Controls.Add(defaults, 0, 2);
+        timingLayout.Controls.Add(new Label { Text = "检测间隔", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
+        timingLayout.Controls.Add(interval, 1, 2);
+        timingLayout.Controls.Add(new Label { Text = "毫秒（16–1000）", AutoSize = true, Anchor = AnchorStyles.Left }, 2, 2);
         var hint = new Label { Text = "默认：显示 100 ms / 隐藏 200 ms；0 表示立即切换。", AutoSize = true, Anchor = AnchorStyles.Left };
         timingLayout.Controls.Add(hint, 0, 3); timingLayout.SetColumnSpan(hint, 3);
         timing.Controls.Add(timingLayout); layout.Controls.Add(timing, 0, 1);
         closeToTray.Checked = settings.CloseToTray; layout.Controls.Add(closeToTray, 0, 2);
-        layout.Controls.Add(pause, 0, 3);
+        var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top };
+        var defaults = new Button { Text = "恢复全部默认设置", AutoSize = true, Name = "RestoreDefaults" };
+        actions.Controls.Add(defaults); actions.Controls.Add(pause); layout.Controls.Add(actions, 0, 3);
         status.Padding = new Padding(0, 10, 0, 0); layout.Controls.Add(status, 0, 4); Controls.Add(layout);
-        showDelay.ValueChanged += (_, _) => SaveTiming();
-        hideDelay.ValueChanged += (_, _) => SaveTiming();
-        defaults.Click += (_, _) => { var d = new Settings(); showDelay.Value = d.ShowDelayMs; hideDelay.Value = d.HideDelayMs; };
-        closeToTray.CheckedChanged += (_, _) => { settings.CloseToTray = closeToTray.Checked; settings.Save(); };
-        cover.CheckedChanged += (_, _) => { settings.Cover = cover.Checked; settings.Save(); Reset(); };
+        showDelay.ValueChanged += (_, _) => SaveUiSettings();
+        hideDelay.ValueChanged += (_, _) => SaveUiSettings();
+        interval.ValueChanged += (_, _) => SaveUiSettings();
+        defaults.Click += (_, _) => RestoreDefaults();
+        closeToTray.CheckedChanged += (_, _) => SaveUiSettings();
+        cover.CheckedChanged += (_, _) => SaveUiSettings();
         pause.Click += (_, _) => TogglePause();
         var menu = new ContextMenuStrip();
         menu.Items.Add("显示控制面板", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); });
@@ -331,17 +347,35 @@ sealed class Controller : Form
         Shown += (_, _) =>
         {
             _ = overlay.Handle;
+            // Keep the controller out of screen capture if it overlaps the map.
+            Native.SetWindowDisplayAffinity(Handle, 0x11);
             bool keys = Native.RegisterHotKey(Handle, 1, 0x4003, 0x77);
             keys &= Native.RegisterHotKey(Handle, 2, 0x4003, 0x78);
             keys &= Native.RegisterHotKey(Handle, 3, 0x4003, 0x79);
             Log($"started captureExcluded={overlay.CaptureExcluded} hotkeys={keys}");
-            timer.Interval = Math.Clamp(settings.IntervalMs, 16, 250); timer.Tick += Tick; timer.Start();
+            timer.Interval = (int)interval.Value; timer.Tick += Tick; timer.Start();
         };
     }
-    void SaveTiming()
+    void SaveUiSettings()
     {
+        if (updatingControls) return;
         settings.ShowDelayMs = (int)showDelay.Value; settings.HideDelayMs = (int)hideDelay.Value;
+        settings.IntervalMs = (int)interval.Value; timer.Interval = settings.IntervalMs;
+        settings.Cover = cover.Checked; settings.CloseToTray = closeToTray.Checked;
         settings.Save(); Reset();
+    }
+    void RestoreDefaults()
+    {
+        settings.RestoreDefaults();
+        updatingControls = true;
+        try
+        {
+            showDelay.Value = settings.ShowDelayMs; hideDelay.Value = settings.HideDelayMs;
+            interval.Value = settings.IntervalMs; cover.Checked = settings.Cover;
+            closeToTray.Checked = settings.CloseToTray;
+        }
+        finally { updatingControls = false; }
+        SaveUiSettings();
     }
     void RequestExit() { exitRequested = true; Close(); }
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -366,7 +400,7 @@ sealed class Controller : Form
         if (DateTime.UtcNow - lastDiagnostic > TimeSpan.FromSeconds(1))
         {
             lastDiagnostic = DateTime.UtcNow;
-            File.WriteAllText("status.json", JsonSerializer.Serialize(new { time = DateTime.Now, state = text, detail, visible = overlay.Visible, cover = settings.Cover, captureExcluded = overlay.CaptureExcluded }));
+            File.WriteAllText("status.json", JsonSerializer.Serialize(new { time = DateTime.Now, state = text, detail, visible = overlay.Visible, cover = settings.Cover, intervalMs = timer.Interval, captureExcluded = overlay.CaptureExcluded }));
         }
     }
     static void Log(string text) => File.AppendAllText("minimap.log", $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {text}\n");
@@ -382,7 +416,10 @@ sealed class Controller : Form
                 game = next; lastLookup = DateTime.UtcNow;
             }
             if (game == 0 || !Native.IsWindow(game)) { Reset(); State("等待 HTGame.exe"); return; }
-            if (Native.IsIconic(game) || Native.GetForegroundWindow() != game) { Reset(); State("游戏未在前台，已隐藏"); return; }
+            var foreground = Native.GetForegroundWindow();
+            Native.GetWindowThreadProcessId(foreground, out uint foregroundProcess);
+            bool ownFocus = foreground != 0 && foregroundProcess == (uint)Environment.ProcessId;
+            if (Native.IsIconic(game) || (foreground != game && !ownFocus)) { Reset(); State("游戏和控制面板均未在前台，已隐藏"); return; }
             if (!overlay.CaptureExcluded) { Reset(); State("无法排除覆盖窗口的捕获，已停用", "请查看 minimap.log"); return; }
             var client = Native.Client(game);
             if (client.Width < 640 || client.Height < 400) { Reset(); State("游戏窗口过小"); return; }

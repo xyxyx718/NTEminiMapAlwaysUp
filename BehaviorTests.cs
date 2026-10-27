@@ -33,6 +33,16 @@ static class BehaviorTests
         Check("reset_discards_previous_tracking", !filter.Update(true, 4000, 100, 200));
         // A long capture stall must not require an arbitrary number of frames.
         Check("elapsed_time_independent_of_frame_rate", filter.Update(true, 4800, 100, 200));
+        var settings = new Settings
+        {
+            ProcessName = "OtherGame", CenterX = 1, CenterY = 2, Radius = 3,
+            ArrowThreshold = .1, RingThreshold = .2, IntervalMs = 500,
+            Cover = false, ShowDelayMs = 999, HideDelayMs = 888, CloseToTray = false
+        };
+        settings.RestoreDefaults();
+        Check("restore_resets_every_setting", JsonSerializer.Serialize(settings) == JsonSerializer.Serialize(new Settings()));
+        Check("default_cover_and_tray_enabled", settings.Cover && settings.CloseToTray);
+        Check("default_detection_interval_33ms", settings.IntervalMs == 33);
         File.WriteAllText("behavior-test-results.json", JsonSerializer.Serialize(new { failures, results }, new JsonSerializerOptions { WriteIndented = true }));
         Environment.ExitCode = failures == 0 ? 0 : 1;
     }
