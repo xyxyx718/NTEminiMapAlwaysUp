@@ -1,47 +1,100 @@
-# 异环小地图朝上
+# NTEminiMapAlwaysUp
 
-双击 `启动小地图.cmd`。入口会先用 Windows 自带的 Windows PowerShell 5.1 检查系统、.NET 9 Desktop Runtime 和简体中文 OCR，再启动主程序；检查器本身不依赖 .NET 9。直接运行 app/MinimapUp.exe 会绕过外部依赖检查。
+<img src="Assets/app-icon.png" width="128" alt="NTEminiMapAlwaysUp icon">
 
-- 缺少 .NET Desktop Runtime 9（x64）时，确认后使用 WinGet 的 `Microsoft.DotNet.DesktopRuntime.9` 精确安装，不安装 SDK；缺少 WinGet 时提供官方运行库下载地址。
-- OCR API 从 Windows 10 起提供，中文识别语言组件可能未安装。开启驾驶模式限制且缺少组件时，确认后使用 `Add-WindowsCapability -Online -Name Language.OCR~~~zh-CN~0.0.1.0` 安装；它是 Windows 按需功能，不是普通 WinGet 软件包。
-- 只有实际安装才申请管理员权限、访问网络，并在安装后重新检查。取消 .NET 安装则不启动；跳过中文 OCR 安装仍可启动，驾驶模式文字限制需取消。已关闭驾驶模式限制时不会反复要求安装 OCR。安装日志在 app/dependency-install.log；若系统要求重启，重启后重新检查。
-- 可用 Windows PowerShell 执行 `scripts/Start-App.ps1 -CheckOnly -NoGui` 做只读检查，输出 JSON，不弹窗、不安装、不启动。`scripts/Test-Startup.ps1` 验证版本识别逻辑。
+让《异环 / Neverness to Everness》的小地图箭头始终朝上。程序捕获游戏窗口，识别箭头方向，将旋转后的小地图以鼠标穿透窗口覆盖在原位置。
 
-- 默认覆盖原小地图；取消勾选“覆盖原小地图”或按 Ctrl+Alt+F9 可切换到右侧预览。
-- 默认勾选“仅在驾驶模式下启用”。右下角识别到“刹车、手刹、加速、切换舒适模式、开启智能驾驶、下车、后视镜”任意一个才允许显示；同时仍需检出小地图。取消勾选则不限制驾驶状态。
-- 驾驶文字使用 Windows 简体中文 OCR，搜索窗口最右侧 35% 宽、下方 75% 高的较大区域，无需联网。按文字搜索，不规定提示所在行位、间距或选项顺序，适应不同车型、汽车 / 摩托车和键鼠 / 手柄布局。后台同时最多一个任务，完成后提交结果；小地图刷新不等待 OCR。支持“刹车/倒车”包含“刹车”和 OCR 在汉字间插入空格。OCR 结果超过 1 秒未更新则不再认可；切出游戏、配置变化等会作废旧任务结果。
-- 驾驶状态变化沿用显示 / 隐藏滤波时间。状态区显示命中关键词及 OCR 耗时；若中文 OCR 不可用，会显示错误并隐藏小地图，可取消驾驶模式限制。截图测试单次 OCR 约 100–180 ms（冷启动样本），加上显示 / 隐藏滤波后才切换，不能视为检测间隔内必定完成。文字严重透明、被遮挡或 OCR 错字仍可能漏检。
-- Ctrl+Alt+F8：暂停 / 恢复。Ctrl+Alt+F10：退出。
-- 窗口中的快捷键提示分别显示为三行：Ctrl+Alt+F8 暂停 / 恢复、Ctrl+Alt+F9 切换覆盖 / 预览、Ctrl+Alt+F10 退出。应用文件、窗口和托盘使用 `Assets/app-icon.ico`，图标基于最早截图的小地图生成，金色箭头固定向上，右下角是白字深灰描边的 NTE。
-- 窗口状态区保留至少 180 像素高度，窗口高度增加到 680，避免第三行快捷键被裁掉。
-- 控制面板可调检测间隔（16–1000 ms，默认 33 ms）以及显示 / 隐藏确认时间（0–5000 ms，默认均为 100 ms，0 表示立即切换）。修改立即生效并保存；实际刷新速度受捕获、识别耗时和系统负载影响。
-- “恢复全部默认设置”重置全部配置，包括检测间隔、显示 / 隐藏时间、覆盖模式、驾驶模式限制、自身焦点显示、关闭到托盘，以及配置文件中的识别位置和门槛；默认覆盖小地图，默认关闭到托盘。
-- 必须连续检测到地图达到显示时间才显示；连续未检测到达到隐藏时间才隐藏，中途恢复检测会取消隐藏计时。等待隐藏期间保留最后一帧，适合滤掉短暂漏检；隐藏时间越长，菜单打开后旧地图也会保留越久。
-- 控制面板最小化后进入托盘，双击托盘图标恢复。可勾选“点击关闭按钮时最小化到托盘”（默认勾选）；关闭面板后捕获继续。托盘右键“退出”或 Ctrl+Alt+F10 始终真正退出，系统关机也不会被拦截。
-- 自动查找 HTGame.exe 和 NTECloudGame.exe；同时运行时优先当前获得焦点的游戏，控制面板获得焦点时保留上一次选中的游戏窗口。配置文件中的 ProcessName 可保留额外的自定义进程名。
-- 游戏获得焦点时可显示；新增“本程序获得焦点时也显示小地图”开关，默认开启。切换到其他程序、游戏最小化、暂停和捕获失败立即隐藏，不等待滤波时间。直接捕获游戏窗口的画面，控制面板遮挡地图也不会被拍进识别输入。
-- 托盘右键菜单打开期间暂停捕获、覆盖重绘和状态刷新，保留最后一帧；菜单关闭后恢复，避免持续刷新干扰菜单点击。覆盖区域未变化时也不再每帧调整窗口位置。
+支持 `HTGame.exe` 和 `NTECloudGame.exe`。不读取游戏内存，不修改游戏文件，不安装自启动。
 
-当前是按提供的 3840×2160 截图校准的原型。随游戏客户区高度缩放，在左上角附近搜索圆形结构，针对中心金色箭头匹配 120 个方向。支持明暗边界和暗背景下的圆环亮边，排除高饱和黄色导航线。新 HUD 布局、HUD 缩放、不同样式的箭头、遮挡以及 HDR 捕获表现仍需实际验证。
+## 下载与启动
 
-实时捕获使用 Windows.Graphics.Capture 直接锁定游戏窗口，由 Direct3D11 提供画面，后台读回并裁出小地图和驾驶提示区域，目标刷新间隔 33 ms。覆盖窗口使用圆形裁剪、置顶、无激活和鼠标穿透。没有使用 SetWindowDisplayAffinity / WDA_EXCLUDEFROMCAPTURE；旧实现的排除标志可能让 NVIDIA 将本程序视为阻止桌面录像的应用。现在捕获源本身不包含覆盖层，可防止递归旋转，同时允许录屏工具录到覆盖后的地图。录屏软件若选择仅捕获游戏源，能否包含外部覆盖层取决于其捕获方式；桌面捕获应可包含。建议无边框窗口模式。实际性能、HDR 和独占全屏效果仍需现场验证，没有测量端到端延迟。
+从 [Releases](https://github.com/xyxyx718/NTEminiMapAlwaysUp/releases) 下载 ZIP，完整解压到可写文件夹，优先双击 **启动小地图.cmd**。不要直接在压缩包内运行。
 
-`app/settings.json` 修改界面选项时生成，保存覆盖模式、IntervalMs、ShowDelayMs / HideDelayMs 和 CloseToTray。旧配置缺少字段时自动采用默认值，已有设置继续保留。退出后还可修改：CenterX / CenterY / Radius 是游戏客户区高度归一化到 1080 后的位置；默认 156 / 140 / 108。ArrowThreshold / RingThreshold 为检测门槛。`app/status.json` 是最近状态及实际定时器间隔，`app/minimap.log` 记录状态切换。
+| 发布包 | .NET 要求 | 适用情况 |
+| --- | --- | --- |
+| `framework-dependent` | 需要 .NET 9 Desktop Runtime x64 | 包较小，已经安装 .NET 或允许启动器补装 |
+| `self-contained` | 自带 .NET，无需预装运行库 | 不确定目标机器是否安装了 .NET |
 
-只捕获屏幕像素并查询窗口，不读取游戏内存。所有生成文件保存在本目录；没有安装自启动或修改游戏文件。
+两个包的 **MinimapUp.exe 都在最外层**，主程序与依赖已合并为单文件。图标也已嵌入。`arrow-template.png`、`scripts/` 和其他随包文件应保留。直接运行 EXE 会绕过外部依赖检查；缺少 .NET 时，小包无法靠自身完成检查。
 
-## 构建和验证
+系统要求：Windows 10 2004（内部版本 19041）或更新版本，x64。建议使用无边框窗口模式；不同 HUD 布局、缩放、HDR 和独占全屏效果需要现场验证。
+
+### 自动依赖检查
+
+- 启动器使用 Windows 自带的 Windows PowerShell 5.1，不依赖 .NET 9。
+- 小包缺少 .NET 时，经确认通过 WinGet 精确安装 `Microsoft.DotNet.DesktopRuntime.9`，不安装 SDK。
+- 两个包的驾驶文字识别均依赖 Windows 简体中文 OCR。缺少时，经确认通过 Windows 按需功能安装 `Language.OCR~~~zh-CN~0.0.1.0`，它不包含在自带 .NET 包中。
+- 只有实际补装才申请管理员权限和联网；依赖齐全时直接启动。跳过 OCR 安装也可启动，取消“仅在驾驶模式下启用”即可使用基础功能。
+- 安装结果记录在程序旁的 `dependency-install.log`。Windows 若要求重启，请重启后重新运行启动器。
+
+## 使用
+
+默认覆盖原小地图。取消勾选“覆盖原小地图”可在右侧预览。
+
+| 选项 | 默认值 / 行为 |
+| --- | --- |
+| 检测间隔 | 33 ms，可调 16–1000 ms |
+| 连续检测到后显示 | 100 ms，可调 0–5000 ms |
+| 连续未检测到后隐藏 | 100 ms，可调 0–5000 ms |
+| 仅在驾驶模式下启用 | 开启 |
+| 本程序获得焦点时也显示 | 开启 |
+| 点击关闭按钮时最小化到托盘 | 开启 |
+
+显示 / 隐藏按实际经过的时间滤波，0 表示立即切换。短暂漏检期间保留上一帧；切出到其他程序、游戏最小化、暂停或捕获失败时立即隐藏。设置自动保存在程序旁的 `settings.json`，“恢复全部默认设置”重置所有配置。
+
+驾驶模式在窗口右侧 35% 宽、下方 75% 高的区域内搜索文字，不限定行位或选项顺序。识别到 **刹车、手刹、加速、切换舒适模式、开启智能驾驶、下车、后视镜** 任意一个，且同时检测到小地图，才允许显示。兼容键鼠、Xbox / PlayStation 提示及汽车、摩托车等布局。
+
+OCR 在后台运行，状态区显示命中词及耗时。它不保证每个检测间隔内完成，文字过淡、遮挡或识别错字仍可能漏检。关闭驾驶模式限制可完全跳过 OCR。
+
+| 快捷键 | 功能 |
+| --- | --- |
+| Ctrl+Alt+F8 | 暂停 / 恢复 |
+| Ctrl+Alt+F9 | 切换覆盖 / 右侧预览 |
+| Ctrl+Alt+F10 | 真正退出程序 |
+
+最小化或关闭到托盘后，双击托盘图标恢复面板。托盘右键“退出”始终真正退出。菜单打开期间暂停刷新，避免干扰点击。
+
+## 捕获与录屏
+
+使用 Windows.Graphics.Capture 直接捕获游戏窗口，覆盖层不会回到输入画面中。没有使用 `SetWindowDisplayAffinity` 或 `WDA_EXCLUDEFROMCAPTURE`，避免旧实现被 NVIDIA 视为阻止桌面录制的应用。
+
+若希望录像包含旋转覆盖层，应使用能捕获外部覆盖窗口的桌面捕获方式；只抓游戏源可能不包含它。NVIDIA 的实际录制、不同硬件和 HDR 的完整兼容性尚未全面验证。
+
+当前小地图位置和金色箭头模板以 3840×2160、16:9 HUD 校准，并随游戏客户区高度缩放。`settings.json` 中的 `CenterX / CenterY / Radius` 是高度归一化到 1080 后的坐标，默认 `156 / 140 / 108`。
+
+## 从源码构建
+
+需要 .NET 9 SDK 和 Windows。普通使用者下载 Release 即可，无需 SDK。
 
 ```powershell
+# 普通开发构建，输出 app/，同时运行行为检查
 .\scripts\Build-App.ps1
+
+# 同时构建小包与自带 .NET 包，运行发布包检查并生成 SHA256
+.\scripts\Package-Release.ps1 -Version 0.1.0
+```
+
+ZIP 和校验文件输出到 `artifacts/releases/`。打包只从本次干净的发布输出取文件，不包含用户设置、日志、调试符号、源码或截图。首次构建自带 .NET 包可能需要从 NuGet 下载运行时包。未启用裁剪，以保持 WinForms / WinRT 兼容性。
+
+## 测试
+
+```powershell
+.\app\MinimapUp.exe --test-behavior
 .\app\MinimapUp.exe --test (Resolve-Path .\tests\fixtures\reference.png).Path
 .\app\MinimapUp.exe --analyze (Resolve-Path .\tests\fixtures\failure-angle.png).Path
-.\app\MinimapUp.exe --test-behavior
 .\app\MinimapUp.exe --test-driving (Resolve-Path .\tests\fixtures\driving-keyboard.png).Path
 ```
 
-工作区布局：`src/` 为应用源码，`tests/` 为行为检查及截图样本，`Assets/` 为图标和箭头模板，`scripts/` 为启动、依赖检查和构建脚本，`app/` 为当前可运行版本及用户配置，`artifacts/` 为构建中间文件、缓存、候选版本和历史诊断报告。构建路径由 `Directory.Build.props` 统一设置；源码、文档、资源和 9 张原始截图受 Git 管理，`driving-rearview-only.png`、新增截图、用户配置及产物默认忽略。旧可执行文件仅保留在 artifacts 中，请通过根目录的“启动小地图.cmd”运行当前版本。
+`--test-behavior` 检查滤波、默认设置和关键词逻辑；`--test` 检查截图及其旋转变体；`--analyze` 和 `--test-driving` 输出实际识别结果。离线截图检查不等于实际驾驶验证。9 张原始样本已纳入 Git，`driving-rearview-only.png` 仅保留本地。样本用途见 [tests/README.md](tests/README.md)。
 
-`--test` 在程序目录生成 test-results.json，覆盖原截图、23 个旋转方向、纯黑无地图和只有箭头无地图样本。旋转测试是离线变换验证，不能代替实际驾驶验证。`--analyze` 在输入截图旁输出 detection.json；`--capture` 是旧的单次桌面截图诊断命令，游戏应保持前台；`--capture-window <绝对输出前缀>` 使用新的游戏窗口捕获，保存 .map.png / .driving.png 和 .capture.json，可检查输入是否为原始游戏画面。
+## 目录
 
-此次验证：原始截图和用户提供的暗背景漏检截图均通过 24 个方向检测；后者离线旋转相对角度误差最大 6°；实际拍照界面截图被拒绝。实测一帧处理时间约 6–14 ms，仅代表本次机器与样本，不是总延迟。
+- `src/`：应用源码。
+- `Assets/`：图标、箭头模板和图标生成提示词。
+- `scripts/`：启动、依赖检查、构建、图标及双版本打包脚本。
+- `tests/`：行为检查和原始截图样本。
+- `app/`、`artifacts/`：本地程序、用户配置、构建缓存与诊断结果，不纳入 Git。
+
+## 许可证
+
+原创代码、脚本与文档采用 [MIT](LICENSE)。游戏截图、提取的箭头模板、底层游戏美术和商标不在本项目的 MIT 授权范围内；第三方运行库保留各自条款，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。本项目是独立工具，不是官方游戏产品。

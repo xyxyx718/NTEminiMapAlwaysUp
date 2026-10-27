@@ -9,7 +9,7 @@ param(
 # Windows PowerShell 5.1 uses the OS .NET Framework and can run even when .NET 9 is absent.
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$appDirectory = Join-Path $projectRoot 'app'
+$appDirectory = if (Test-Path -LiteralPath (Join-Path $projectRoot 'MinimapUp.exe')) { $projectRoot } else { Join-Path $projectRoot 'app' }
 $appPath = Join-Path $appDirectory 'MinimapUp.exe'
 $logPath = Join-Path $appDirectory 'dependency-install.log'
 
@@ -33,6 +33,11 @@ function Find-WinGet {
 }
 
 function Get-Dependencies {
+    $bundledRuntime = $false
+    $releaseInfo = Join-Path $appDirectory 'release.json'
+    if (Test-Path -LiteralPath $releaseInfo) {
+        try { $bundledRuntime = (Get-Content -LiteralPath $releaseInfo -Raw | ConvertFrom-Json).selfContained -eq $true } catch { }
+    }
     $roots = @($env:DOTNET_ROOT_X64, $env:DOTNET_ROOT)
     try { $roots += (Get-ItemProperty 'HKLM:\SOFTWARE\dotnet\Setup\InstalledVersions\x64' -ErrorAction Stop).InstallLocation } catch { }
     $roots += Join-Path $env:ProgramFiles 'dotnet'
@@ -59,6 +64,7 @@ function Get-Dependencies {
         SupportedWindows = [Environment]::Is64BitOperatingSystem -and $build -ge 19041
         WindowsBuild = $build
         DesktopRuntime9 = $runtime
+        BundledRuntime = $bundledRuntime
         DotNetPath = $runtimePath
         ChineseOcr = $ocr
         OcrError = $ocrError
@@ -118,15 +124,15 @@ try {
     }
 
     $state = Get-Dependencies
-    if ($CheckOnly -and $NoGui) { $state | ConvertTo-Json; if ($state.SupportedWindows -and $state.DesktopRuntime9 -and $state.ChineseOcr) { exit 0 } else { exit 2 } }
+    if ($CheckOnly -and $NoGui) { $state | ConvertTo-Json; if ($state.SupportedWindows -and ($state.DesktopRuntime9 -or $state.BundledRuntime) -and $state.ChineseOcr) { exit 0 } else { exit 2 } }
     Add-Type -AssemblyName System.Windows.Forms
     if ($CheckOnly) {
-        Show-Message ("Windows 支持：{0}`r`n.NET Desktop Runtime 9：{1}`r`n简体中文 OCR：{2}`r`nWinGet 可用：{3}" -f $state.SupportedWindows, $state.DesktopRuntime9, $state.ChineseOcr, $state.WinGetAvailable) | Out-Null
+        Show-Message ("Windows 支持：{0}`r`n.NET Desktop Runtime 9：{1}`r`n包内自带 .NET：{2}`r`n简体中文 OCR：{3}`r`nWinGet 可用：{4}" -f $state.SupportedWindows, $state.DesktopRuntime9, $state.BundledRuntime, $state.ChineseOcr, $state.WinGetAvailable) | Out-Null
         exit 0
     }
     if (!$state.SupportedWindows) { throw '本版本需要 64 位 Windows 10 2004（内部版本 19041）或更新系统。' }
     if (!(Test-Path -LiteralPath $appPath)) { throw "未找到程序：$appPath`r`n请先构建或解压完整目录。" }
-    if (!$state.DesktopRuntime9) {
+    if (!$state.DesktopRuntime9 -and !$state.BundledRuntime) {
         if (!$state.WinGetAvailable) { throw '缺少 .NET Desktop Runtime 9，且 WinGet 不可用。请从 https://dotnet.microsoft.com/download/dotnet/9.0 安装 x64 Desktop Runtime 后重试。' }
         $answer = Show-Message "缺少 .NET Desktop Runtime 9（x64）。`r`n是否通过 WinGet 自动安装？安装需要联网和管理员权限。" 'YesNo' 'Question'
         if ($answer -ne 'Yes') { exit 2 }

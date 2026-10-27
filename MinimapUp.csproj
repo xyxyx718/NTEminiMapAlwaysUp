@@ -10,6 +10,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
+    <Version>0.1.0</Version>
+    <RepositoryUrl>https://github.com/xyxyx718/NTEminiMapAlwaysUp</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="Assets\arrow-template.png" Link="arrow-template.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
