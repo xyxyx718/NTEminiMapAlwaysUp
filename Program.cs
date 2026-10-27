@@ -18,6 +18,7 @@ static class Program
         {
             if (args.Length > 0 && args[0] == "--test") { Offline.Run(args[1]); return; }
             if (args.Length > 0 && args[0] == "--capture") { Offline.Capture(args[1]); return; }
+            if (args.Length > 0 && args[0] == "--capture-window") { Offline.CaptureWindow(args[1]); return; }
             if (args.Length > 0 && args[0] == "--analyze") { Offline.Analyze(args[1]); return; }
             if (args.Length > 0 && args[0] == "--test-behavior") { BehaviorTests.Run(); return; }
             if (args.Length > 0 && args[0] == "--test-driving")
@@ -30,7 +31,12 @@ static class Program
             }
             Application.Run(new Controller());
         }
-        catch (Exception ex) { File.WriteAllText("error.log", ex.ToString()); MessageBox.Show(ex.Message, "MinimapUp"); }
+        catch (Exception ex)
+        {
+            File.WriteAllText("error.log", ex.ToString());
+            if (args.Length == 0) MessageBox.Show(ex.Message, "MinimapUp");
+            Environment.ExitCode = 1;
+        }
     }
 }
 
@@ -91,7 +97,6 @@ static class Native
     [DllImport("user32.dll")] internal static extern uint GetWindowThreadProcessId(nint hwnd, out uint processId);
     [DllImport("user32.dll")] internal static extern bool IsIconic(nint hwnd);
     [DllImport("user32.dll")] internal static extern bool IsWindow(nint hwnd);
-    [DllImport("user32.dll", SetLastError = true)] internal static extern bool SetWindowDisplayAffinity(nint hwnd, uint affinity);
     [DllImport("user32.dll")] internal static extern bool RegisterHotKey(nint hwnd, int id, uint modifiers, uint key);
     [DllImport("user32.dll")] internal static extern bool UnregisterHotKey(nint hwnd, int id);
     [DllImport("user32.dll")] internal static extern bool SetLayeredWindowAttributes(nint hwnd, uint colorKey, byte alpha, uint flags);
@@ -247,7 +252,6 @@ sealed class Overlay : Form
 {
     Bitmap? frame;
     double angle;
-    public bool CaptureExcluded { get; private set; }
     public Overlay()
     {
         FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; TopMost = true;
@@ -259,7 +263,6 @@ sealed class Overlay : Form
     {
         base.OnHandleCreated(e);
         Native.SetLayeredWindowAttributes(Handle, 0, 255, 2);
-        CaptureExcluded = Native.SetWindowDisplayAffinity(Handle, 0x11);
     }
     protected override void OnSizeChanged(EventArgs e)
     {
@@ -310,6 +313,8 @@ sealed class Controller : Form
     readonly DrivingMonitor drivingMonitor = new();
     readonly VisibilityFilter visibility = new();
     readonly Detector detector;
+    WindowCapture? windowCapture;
+    DateTime lastCaptureStart;
     bool paused;
     nint game;
     DateTime lastLookup;
@@ -369,7 +374,7 @@ sealed class Controller : Form
         showWhenAppFocused.CheckedChanged += (_, _) => SaveUiSettings();
         pause.Click += (_, _) => TogglePause();
         var menu = new ContextMenuStrip();
-        menu.Opening += (_, _) => { trayMenuOpen = true; timer.Stop(); };
+        menu.Opening += (_, _) => { trayMenuOpen = true; timer.Stop(); if (windowCapture != null) windowCapture.Active = false; };
         menu.Closed += (_, _) =>
         {
             trayMenuOpen = false;
@@ -383,12 +388,10 @@ sealed class Controller : Form
         Shown += (_, _) =>
         {
             _ = overlay.Handle;
-            // Keep the controller out of screen capture if it overlaps the map.
-            Native.SetWindowDisplayAffinity(Handle, 0x11);
             bool keys = Native.RegisterHotKey(Handle, 1, 0x4003, 0x77);
             keys &= Native.RegisterHotKey(Handle, 2, 0x4003, 0x78);
             keys &= Native.RegisterHotKey(Handle, 3, 0x4003, 0x79);
-            Log($"started captureExcluded={overlay.CaptureExcluded} hotkeys={keys}");
+            Log($"started capture=Windows.Graphics.Capture displayAffinity=none hotkeys={keys}");
             timer.Interval = (int)interval.Value; timer.Tick += Tick; timer.Start();
         };
     }
@@ -438,7 +441,11 @@ sealed class Controller : Form
         if (m.Msg == 0x312) { if (m.WParam == 1) TogglePause(); else if (m.WParam == 2) cover.Checked = !cover.Checked; else if (m.WParam == 3) RequestExit(); }
         base.WndProc(ref m);
     }
-    void Reset() { visibility.Reset(); drivingMonitor.Reset(); tracking = false; overlay.Hide(); }
+    void Reset()
+    {
+        visibility.Reset(); drivingMonitor.Reset(); tracking = false; overlay.Hide();
+        if (windowCapture != null) windowCapture.Active = false;
+    }
     void State(string text, string detail = "")
     {
         if (lastState != text) { lastState = text; Log(text); }
@@ -446,7 +453,7 @@ sealed class Controller : Form
         if (DateTime.UtcNow - lastDiagnostic > TimeSpan.FromSeconds(1))
         {
             lastDiagnostic = DateTime.UtcNow;
-            File.WriteAllText("status.json", JsonSerializer.Serialize(new { time = DateTime.Now, state = text, detail, visible = overlay.Visible, cover = settings.Cover, drivingOnly = settings.DrivingOnly, intervalMs = timer.Interval, captureExcluded = overlay.CaptureExcluded }));
+            File.WriteAllText("status.json", JsonSerializer.Serialize(new { time = DateTime.Now, state = text, detail, visible = overlay.Visible, cover = settings.Cover, drivingOnly = settings.DrivingOnly, intervalMs = timer.Interval, captureBackend = "Windows.Graphics.Capture", readbackMs = windowCapture?.ReadbackMilliseconds, displayAffinity = "none" }));
         }
     }
     static void Log(string text) => File.AppendAllText("minimap.log", $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {text}\n");
@@ -467,33 +474,33 @@ sealed class Controller : Form
             Native.GetWindowThreadProcessId(foreground, out uint foregroundProcess);
             bool ownFocus = settings.ShowWhenAppFocused && foreground != 0 && foregroundProcess == (uint)Environment.ProcessId;
             if (Native.IsIconic(game) || (foreground != game && !ownFocus)) { Reset(); State("游戏和控制面板均未在前台，已隐藏"); return; }
-            if (!overlay.CaptureExcluded) { Reset(); State("无法排除覆盖窗口的捕获，已停用", "请查看 minimap.log"); return; }
             var client = Native.Client(game);
             if (client.Width < 640 || client.Height < 400) { Reset(); State("游戏窗口过小"); return; }
             if (client != lastClient) { Reset(); lastClient = client; }
             watch.Restart();
             double scale = client.Height / 1080.0;
-            var roi = new Rectangle(client.X, client.Y, (int)Math.Round(320 * scale), (int)Math.Round(300 * scale));
-            using var captured = new Bitmap(roi.Width, roi.Height);
-            using (var g = Graphics.FromImage(captured)) g.CopyFromScreen(roi.Location, Point.Empty, roi.Size, CopyPixelOperation.SourceCopy);
+            if (windowCapture == null || windowCapture.Window != game || (windowCapture.Error != null && DateTime.UtcNow - lastCaptureStart > TimeSpan.FromSeconds(2)))
+            {
+                windowCapture?.Dispose(); windowCapture = new WindowCapture(game); lastCaptureStart = DateTime.UtcNow; Reset();
+            }
+            windowCapture.IntervalMs = settings.IntervalMs; windowCapture.Active = true;
+            if (windowCapture.Error != null)
+            {
+                Reset(); State("游戏窗口捕获失败，已隐藏", windowCapture.Error); return;
+            }
+            if (!windowCapture.TryGetMinimap(client, out var mapInput))
+            {
+                visibility.Reset(); tracking = false; overlay.Hide();
+                State("等待游戏窗口捕获画面"); return;
+            }
+            using var captured = mapInput!;
             using var normalized = Detector.Normalize(captured);
             var d = detector.Detect(normalized);
             string detail = $"箭头 {d.Arrow:F2} / 圆形 {d.Ring:F2} · 处理 {watch.ElapsedMilliseconds} ms";
             bool driving = true;
             if (settings.DrivingOnly)
             {
-                var result = drivingMonitor.Poll(() =>
-                {
-                    var region = DrivingDetector.Region(client);
-                    var image = new Bitmap(region.Width, region.Height);
-                    try
-                    {
-                        using var g = Graphics.FromImage(image);
-                        g.CopyFromScreen(region.Location, Point.Empty, region.Size, CopyPixelOperation.SourceCopy);
-                        return image;
-                    }
-                    catch { image.Dispose(); throw; }
-                });
+                var result = drivingMonitor.Poll(() => windowCapture.CopyDriving(client));
                 driving = result.Detected;
                 detail += "\n驾驶提示：" + (result.Error ?? (driving ? string.Join("、", result.Keywords) : "未检出 / 正在识别"));
                 if (result.Milliseconds > 0) detail += $" · OCR {result.Milliseconds:F0} ms";
@@ -524,7 +531,7 @@ sealed class Controller : Form
     {
         if (disposing)
         {
-            timer.Stop(); timer.Dispose(); overlay.Dispose(); tray.Visible = false; tray.Dispose(); appIcon.Dispose();
+            timer.Stop(); timer.Dispose(); windowCapture?.Dispose(); overlay.Dispose(); tray.Visible = false; tray.Dispose(); appIcon.Dispose();
             for (int i = 1; i <= 3; i++) Native.UnregisterHotKey(Handle, i);
         }
         base.Dispose(disposing);
@@ -533,6 +540,27 @@ sealed class Controller : Form
 
 static class Offline
 {
+    public static void CaptureWindow(string prefix)
+    {
+        var window = Native.FindGame("HTGame");
+        if (window == 0) throw new InvalidOperationException("未找到 HTGame.exe / NTECloudGame.exe");
+        using var capture = new WindowCapture(window);
+        long deadline = Environment.TickCount64 + 7000;
+        while (Environment.TickCount64 < deadline)
+        {
+            if (capture.Error != null) throw new InvalidOperationException(capture.Error);
+            var client = Native.Client(window);
+            if (capture.TryGetMinimap(client, out var map))
+            {
+                using (map) map!.Save(prefix + ".map.png");
+                using var driving = capture.CopyDriving(client); driving.Save(prefix + ".driving.png");
+                File.WriteAllText(prefix + ".capture.json", JsonSerializer.Serialize(new { backend = "Windows.Graphics.Capture", client, capture.ReadbackMilliseconds }));
+                return;
+            }
+            Thread.Sleep(25);
+        }
+        throw new TimeoutException("等待游戏窗口捕获超时");
+    }
     public static void Analyze(string filename)
     {
         using var image = new Bitmap(filename);
