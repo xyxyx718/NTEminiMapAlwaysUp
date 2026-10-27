@@ -13,3 +13,5 @@ live-*.png
 arrow.png
 *-tests.json
 behavior-test-results.json
+driving-*.png
+*.driving.json

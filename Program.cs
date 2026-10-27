@@ -20,6 +20,14 @@ static class Program
             if (args.Length > 0 && args[0] == "--capture") { Offline.Capture(args[1]); return; }
             if (args.Length > 0 && args[0] == "--analyze") { Offline.Analyze(args[1]); return; }
             if (args.Length > 0 && args[0] == "--test-behavior") { BehaviorTests.Run(); return; }
+            if (args.Length > 0 && args[0] == "--test-driving")
+            {
+                using var source = new Bitmap(args[1]);
+                using var roi = source.Clone(DrivingDetector.Region(new Rectangle(Point.Empty, source.Size)), PixelFormat.Format32bppArgb);
+                var result = Task.Run(() => new DrivingDetector().RecognizeAsync(roi)).GetAwaiter().GetResult();
+                File.WriteAllText(args[1] + ".driving.json", JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+                Environment.ExitCode = result.Error == null ? 0 : 1; return;
+            }
             Application.Run(new Controller());
         }
         catch (Exception ex) { File.WriteAllText("error.log", ex.ToString()); MessageBox.Show(ex.Message, "MinimapUp"); }
@@ -40,13 +48,16 @@ sealed class Settings
     public int ShowDelayMs { get; set; } = 100;
     public int HideDelayMs { get; set; } = 200;
     public bool CloseToTray { get; set; } = true;
+    public bool DrivingOnly { get; set; } = true;
+    public bool ShowWhenAppFocused { get; set; } = true;
     public void RestoreDefaults()
     {
         var d = new Settings();
         ProcessName = d.ProcessName; CenterX = d.CenterX; CenterY = d.CenterY; Radius = d.Radius;
         ArrowThreshold = d.ArrowThreshold; RingThreshold = d.RingThreshold;
         IntervalMs = d.IntervalMs; Cover = d.Cover; ShowDelayMs = d.ShowDelayMs;
-        HideDelayMs = d.HideDelayMs; CloseToTray = d.CloseToTray;
+        HideDelayMs = d.HideDelayMs; CloseToTray = d.CloseToTray; DrivingOnly = d.DrivingOnly;
+        ShowWhenAppFocused = d.ShowWhenAppFocused;
     }
     public static Settings Load() => File.Exists("settings.json") ? JsonSerializer.Deserialize<Settings>(File.ReadAllText("settings.json"))! : new();
     public void Save() => File.WriteAllText("settings.json", JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
@@ -91,11 +102,19 @@ static class Native
         if (!ClientToScreen(hwnd, ref p)) return Rectangle.Empty;
         return new(p.X, p.Y, r.Right, r.Bottom);
     }
-    internal static nint FindGame(string name)
+    internal static nint FindGame(string name, nint preferred = 0)
     {
-        foreach (var p in Process.GetProcessesByName(name))
-            using (p) { if (p.MainWindowHandle != 0) return p.MainWindowHandle; }
-        return 0;
+        nint foreground = GetForegroundWindow(), fallback = 0;
+        foreach (var processName in new[] { Path.GetFileNameWithoutExtension(name), "HTGame", "NTECloudGame" }.Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (var p in Process.GetProcessesByName(processName))
+                using (p)
+                {
+                    var hwnd = p.MainWindowHandle;
+                    if (hwnd == 0 || IsIconic(hwnd)) continue;
+                    if (hwnd == foreground) return hwnd;
+                    if (fallback == 0 || hwnd == preferred) fallback = hwnd;
+                }
+        return fallback;
     }
 }
 
@@ -257,7 +276,8 @@ sealed class Overlay : Form
     public void Present(Bitmap bitmap, Rectangle bounds, double rotation)
     {
         frame?.Dispose(); frame = bitmap; angle = rotation;
-        Bounds = bounds; if (!Visible) Show(); Invalidate();
+        if (Bounds != bounds) Bounds = bounds;
+        if (!Visible) Show(); Invalidate();
     }
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -284,6 +304,9 @@ sealed class Controller : Form
     readonly NumericUpDown hideDelay = new() { Minimum = 0, Maximum = 5000, Increment = 50, Width = 110, Name = "HideDelayMs" };
     readonly NumericUpDown interval = new() { Minimum = 16, Maximum = 1000, Increment = 1, Width = 110, Name = "IntervalMs" };
     readonly CheckBox closeToTray = new() { Text = "点击关闭按钮时最小化到托盘", AutoSize = true, Name = "CloseToTray" };
+    readonly CheckBox drivingOnly = new() { Text = "仅在驾驶模式下启用（识别右下角驾驶提示）", AutoSize = true, Name = "DrivingOnly" };
+    readonly CheckBox showWhenAppFocused = new() { Text = "本程序获得焦点时也显示小地图", AutoSize = true, Name = "ShowWhenAppFocused" };
+    readonly DrivingMonitor drivingMonitor = new();
     readonly VisibilityFilter visibility = new();
     readonly Detector detector;
     bool paused;
@@ -291,6 +314,7 @@ sealed class Controller : Form
     DateTime lastLookup;
     bool exitRequested;
     bool updatingControls;
+    bool trayMenuOpen;
     Rectangle lastClient;
     double smoothAngle;
     bool tracking;
@@ -301,14 +325,15 @@ sealed class Controller : Form
     {
         Text = "异环 · 小地图朝上（原型）";
         Font = new Font("Microsoft YaHei UI", 10); AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(640, 500); StartPosition = FormStartPosition.CenterScreen;
+        ClientSize = new Size(640, 570); StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false;
         detector = new Detector(settings, Path.Combine(AppContext.BaseDirectory, "arrow-template.png"));
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(14) };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7, Padding = new Padding(14) };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 4; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        for (int i = 0; i < 6; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         cover.Checked = settings.Cover; layout.Controls.Add(cover, 0, 0);
+        drivingOnly.Checked = settings.DrivingOnly; layout.Controls.Add(drivingOnly, 0, 1);
         var timing = new GroupBox { Text = "检测与显示", AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(10, 25, 10, 10) };
         var timingLayout = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 4 };
         showDelay.Value = Math.Clamp(settings.ShowDelayMs, 0, 5000);
@@ -325,20 +350,29 @@ sealed class Controller : Form
         timingLayout.Controls.Add(new Label { Text = "毫秒（16–1000）", AutoSize = true, Anchor = AnchorStyles.Left }, 2, 2);
         var hint = new Label { Text = "默认：显示 100 ms / 隐藏 200 ms；0 表示立即切换。", AutoSize = true, Anchor = AnchorStyles.Left };
         timingLayout.Controls.Add(hint, 0, 3); timingLayout.SetColumnSpan(hint, 3);
-        timing.Controls.Add(timingLayout); layout.Controls.Add(timing, 0, 1);
-        closeToTray.Checked = settings.CloseToTray; layout.Controls.Add(closeToTray, 0, 2);
+        timing.Controls.Add(timingLayout); layout.Controls.Add(timing, 0, 2);
+        closeToTray.Checked = settings.CloseToTray; layout.Controls.Add(closeToTray, 0, 3);
         var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top };
         var defaults = new Button { Text = "恢复全部默认设置", AutoSize = true, Name = "RestoreDefaults" };
-        actions.Controls.Add(defaults); actions.Controls.Add(pause); layout.Controls.Add(actions, 0, 3);
-        status.Padding = new Padding(0, 10, 0, 0); layout.Controls.Add(status, 0, 4); Controls.Add(layout);
+        showWhenAppFocused.Checked = settings.ShowWhenAppFocused; layout.Controls.Add(showWhenAppFocused, 0, 4);
+        actions.Controls.Add(defaults); actions.Controls.Add(pause); layout.Controls.Add(actions, 0, 5);
+        status.Padding = new Padding(0, 10, 0, 0); layout.Controls.Add(status, 0, 6); Controls.Add(layout);
         showDelay.ValueChanged += (_, _) => SaveUiSettings();
         hideDelay.ValueChanged += (_, _) => SaveUiSettings();
         interval.ValueChanged += (_, _) => SaveUiSettings();
         defaults.Click += (_, _) => RestoreDefaults();
         closeToTray.CheckedChanged += (_, _) => SaveUiSettings();
         cover.CheckedChanged += (_, _) => SaveUiSettings();
+        drivingOnly.CheckedChanged += (_, _) => SaveUiSettings();
+        showWhenAppFocused.CheckedChanged += (_, _) => SaveUiSettings();
         pause.Click += (_, _) => TogglePause();
         var menu = new ContextMenuStrip();
+        menu.Opening += (_, _) => { trayMenuOpen = true; timer.Stop(); };
+        menu.Closed += (_, _) =>
+        {
+            trayMenuOpen = false;
+            if (!exitRequested && !Disposing && !IsDisposed) timer.Start();
+        };
         menu.Items.Add("显示控制面板", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); });
         menu.Items.Add("暂停 / 恢复", null, (_, _) => TogglePause());
         menu.Items.Add("退出", null, (_, _) => RequestExit()); tray.ContextMenuStrip = menu;
@@ -362,6 +396,8 @@ sealed class Controller : Form
         settings.ShowDelayMs = (int)showDelay.Value; settings.HideDelayMs = (int)hideDelay.Value;
         settings.IntervalMs = (int)interval.Value; timer.Interval = settings.IntervalMs;
         settings.Cover = cover.Checked; settings.CloseToTray = closeToTray.Checked;
+        settings.DrivingOnly = drivingOnly.Checked;
+        settings.ShowWhenAppFocused = showWhenAppFocused.Checked;
         settings.Save(); Reset();
     }
     void RestoreDefaults()
@@ -373,6 +409,8 @@ sealed class Controller : Form
             showDelay.Value = settings.ShowDelayMs; hideDelay.Value = settings.HideDelayMs;
             interval.Value = settings.IntervalMs; cover.Checked = settings.Cover;
             closeToTray.Checked = settings.CloseToTray;
+            drivingOnly.Checked = settings.DrivingOnly;
+            showWhenAppFocused.Checked = settings.ShowWhenAppFocused;
         }
         finally { updatingControls = false; }
         SaveUiSettings();
@@ -392,7 +430,7 @@ sealed class Controller : Form
         if (m.Msg == 0x312) { if (m.WParam == 1) TogglePause(); else if (m.WParam == 2) cover.Checked = !cover.Checked; else if (m.WParam == 3) RequestExit(); }
         base.WndProc(ref m);
     }
-    void Reset() { visibility.Reset(); tracking = false; overlay.Hide(); }
+    void Reset() { visibility.Reset(); drivingMonitor.Reset(); tracking = false; overlay.Hide(); }
     void State(string text, string detail = "")
     {
         if (lastState != text) { lastState = text; Log(text); }
@@ -400,7 +438,7 @@ sealed class Controller : Form
         if (DateTime.UtcNow - lastDiagnostic > TimeSpan.FromSeconds(1))
         {
             lastDiagnostic = DateTime.UtcNow;
-            File.WriteAllText("status.json", JsonSerializer.Serialize(new { time = DateTime.Now, state = text, detail, visible = overlay.Visible, cover = settings.Cover, intervalMs = timer.Interval, captureExcluded = overlay.CaptureExcluded }));
+            File.WriteAllText("status.json", JsonSerializer.Serialize(new { time = DateTime.Now, state = text, detail, visible = overlay.Visible, cover = settings.Cover, drivingOnly = settings.DrivingOnly, intervalMs = timer.Interval, captureExcluded = overlay.CaptureExcluded }));
         }
     }
     static void Log(string text) => File.AppendAllText("minimap.log", $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {text}\n");
@@ -408,17 +446,18 @@ sealed class Controller : Form
     {
         try
         {
+            if (trayMenuOpen) return;
             if (paused) { Reset(); State("已暂停"); return; }
             if (DateTime.UtcNow - lastLookup > TimeSpan.FromSeconds(1))
             {
-                var next = Native.FindGame(settings.ProcessName);
+                var next = Native.FindGame(settings.ProcessName, game);
                 if (game != next) Reset();
                 game = next; lastLookup = DateTime.UtcNow;
             }
-            if (game == 0 || !Native.IsWindow(game)) { Reset(); State("等待 HTGame.exe"); return; }
+            if (game == 0 || !Native.IsWindow(game)) { Reset(); State("等待 HTGame.exe / NTECloudGame.exe"); return; }
             var foreground = Native.GetForegroundWindow();
             Native.GetWindowThreadProcessId(foreground, out uint foregroundProcess);
-            bool ownFocus = foreground != 0 && foregroundProcess == (uint)Environment.ProcessId;
+            bool ownFocus = settings.ShowWhenAppFocused && foreground != 0 && foregroundProcess == (uint)Environment.ProcessId;
             if (Native.IsIconic(game) || (foreground != game && !ownFocus)) { Reset(); State("游戏和控制面板均未在前台，已隐藏"); return; }
             if (!overlay.CaptureExcluded) { Reset(); State("无法排除覆盖窗口的捕获，已停用", "请查看 minimap.log"); return; }
             var client = Native.Client(game);
@@ -432,12 +471,32 @@ sealed class Controller : Form
             using var normalized = Detector.Normalize(captured);
             var d = detector.Detect(normalized);
             string detail = $"箭头 {d.Arrow:F2} / 圆形 {d.Ring:F2} · 处理 {watch.ElapsedMilliseconds} ms";
-            if (!visibility.Update(d.Valid, Environment.TickCount64, settings.ShowDelayMs, settings.HideDelayMs))
+            bool driving = true;
+            if (settings.DrivingOnly)
+            {
+                var result = drivingMonitor.Poll(() =>
+                {
+                    var region = DrivingDetector.Region(client);
+                    var image = new Bitmap(region.Width, region.Height);
+                    try
+                    {
+                        using var g = Graphics.FromImage(image);
+                        g.CopyFromScreen(region.Location, Point.Empty, region.Size, CopyPixelOperation.SourceCopy);
+                        return image;
+                    }
+                    catch { image.Dispose(); throw; }
+                });
+                driving = result.Detected;
+                detail += "\n驾驶提示：" + (result.Error ?? (driving ? string.Join("、", result.Keywords) : "未检出 / 正在识别"));
+                if (result.Milliseconds > 0) detail += $" · OCR {result.Milliseconds:F0} ms";
+            }
+            bool valid = d.Valid && driving;
+            if (!visibility.Update(valid, Environment.TickCount64, settings.ShowDelayMs, settings.HideDelayMs))
             {
                 tracking = false; overlay.Hide();
-                State(d.Valid ? "正在确认显示小地图" : "未检测到可靠小地图，已隐藏", detail); return;
+                State(valid ? "正在确认显示小地图" : (!driving ? "未识别到驾驶提示，已隐藏" : "未检测到可靠小地图，已隐藏"), detail); return;
             }
-            if (!d.Valid) { State("正在确认隐藏小地图（暂时保留上一帧）", detail); return; }
+            if (!valid) { State("正在确认隐藏小地图（暂时保留上一帧）", detail); return; }
             double target = -d.Heading;
             if (!tracking) { smoothAngle = target; tracking = true; }
             else smoothAngle += Detector.Wrap(target - smoothAngle) * .65;

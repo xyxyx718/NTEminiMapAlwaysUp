@@ -37,12 +37,21 @@ static class BehaviorTests
         {
             ProcessName = "OtherGame", CenterX = 1, CenterY = 2, Radius = 3,
             ArrowThreshold = .1, RingThreshold = .2, IntervalMs = 500,
-            Cover = false, ShowDelayMs = 999, HideDelayMs = 888, CloseToTray = false
+            Cover = false, ShowDelayMs = 999, HideDelayMs = 888, CloseToTray = false, DrivingOnly = false, ShowWhenAppFocused = false
         };
         settings.RestoreDefaults();
         Check("restore_resets_every_setting", JsonSerializer.Serialize(settings) == JsonSerializer.Serialize(new Settings()));
         Check("default_cover_and_tray_enabled", settings.Cover && settings.CloseToTray);
         Check("default_detection_interval_33ms", settings.IntervalMs == 33);
+        Check("driving_only_enabled_by_default", settings.DrivingOnly);
+        foreach (string keyword in DrivingDetector.Keywords)
+            Check($"driving_keyword_{keyword}", DrivingDetector.MatchKeywords([string.Join(" ", keyword.ToCharArray())]).Contains(keyword));
+        Check("brake_reverse_contains_brake", DrivingDetector.MatchKeywords(["LT 刹 车 / 倒 车"]).Contains("刹车"));
+        Check("photo_hints_are_not_driving", DrivingDetector.MatchKeywords(["拍照", "操控镜头", "拉近/拉远镜头", "智能驾驶"]).Length == 0);
+        Check("walking_hints_are_not_driving", DrivingDetector.MatchKeywords(["闪避", "跳跃", "攻击", "上车"]).Length == 0);
+        Check("keywords_cannot_span_separate_lines", DrivingDetector.MatchKeywords(["下", "车"]).Length == 0);
+        var search = DrivingDetector.Region(new System.Drawing.Rectangle(100, 50, 1920, 1080));
+        Check("driving_search_covers_broad_right_area", search.Width == 672 && search.Height == 810 && search.Right == 2020 && search.Bottom == 1130);
         File.WriteAllText("behavior-test-results.json", JsonSerializer.Serialize(new { failures, results }, new JsonSerializerOptions { WriteIndented = true }));
         Environment.ExitCode = failures == 0 ? 0 : 1;
     }
