@@ -1,0 +1,14 @@
+bin/
+obj/
+candidate/
+app/
+.dotnet/
+*.log
+status.json
+reference.png
+failure-angle.png
+live-*.png
+*.detection.json
+*.png.json
+arrow.png
+*-tests.json
