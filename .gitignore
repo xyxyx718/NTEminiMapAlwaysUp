@@ -4,7 +4,7 @@ candidate/
 app/
 .dotnet/
 artifacts/
-tests/fixtures/
+tests/fixtures/*
 *.log
 status.json
 reference.png
@@ -17,3 +17,12 @@ arrow.png
 behavior-test-results.json
 driving-*.png
 *.driving.json
+!tests/fixtures/reference.png
+!tests/fixtures/failure-angle.png
+!tests/fixtures/live-game.png
+!tests/fixtures/live-map.png
+!tests/fixtures/driving-keyboard.png
+!tests/fixtures/driving-playstation.png
+!tests/fixtures/driving-xbox.png
+!tests/fixtures/driving-rain-car.png
+!tests/fixtures/driving-motorcycle.png

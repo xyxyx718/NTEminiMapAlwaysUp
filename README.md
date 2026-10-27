@@ -40,7 +40,7 @@
 .\app\MinimapUp.exe --test-driving (Resolve-Path .\tests\fixtures\driving-keyboard.png).Path
 ```
 
-工作区布局：`src/` 为应用源码，`tests/` 为行为检查及本地截图样本，`Assets/` 为图标和箭头模板，`scripts/` 为启动、依赖检查和构建脚本，`app/` 为当前可运行版本及用户配置，`artifacts/` 为构建中间文件、缓存、候选版本和历史诊断报告。构建路径由 `Directory.Build.props` 统一设置；源码、文档和资源受 Git 管理，本地截图、配置及产物忽略。旧可执行文件仅保留在 artifacts 中，请通过根目录的“启动小地图.cmd”运行当前版本。
+工作区布局：`src/` 为应用源码，`tests/` 为行为检查及截图样本，`Assets/` 为图标和箭头模板，`scripts/` 为启动、依赖检查和构建脚本，`app/` 为当前可运行版本及用户配置，`artifacts/` 为构建中间文件、缓存、候选版本和历史诊断报告。构建路径由 `Directory.Build.props` 统一设置；源码、文档、资源和 9 张原始截图受 Git 管理，`driving-rearview-only.png`、新增截图、用户配置及产物默认忽略。旧可执行文件仅保留在 artifacts 中，请通过根目录的“启动小地图.cmd”运行当前版本。
 
 `--test` 在程序目录生成 test-results.json，覆盖原截图、23 个旋转方向、纯黑无地图和只有箭头无地图样本。旋转测试是离线变换验证，不能代替实际驾驶验证。`--analyze` 在输入截图旁输出 detection.json；`--capture` 是旧的单次桌面截图诊断命令，游戏应保持前台；`--capture-window <绝对输出前缀>` 使用新的游戏窗口捕获，保存 .map.png / .driving.png 和 .capture.json，可检查输入是否为原始游戏画面。
 
